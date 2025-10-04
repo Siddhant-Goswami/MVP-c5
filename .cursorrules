@@ -10,6 +10,7 @@ project/
 │   └── sources.py        # News sources configuration
 ├── utils/
 │   ├── __init__.py       # Make utils a Python package
+│   ├── auth.py          # Supabase authentication utilities
 │   ├── database.py       # Supabase database operations
 │   ├── scraper.py        # News scraping (primary method)
 │   ├── ai_curator.py     # Groq LLM newsletter generation
@@ -59,6 +60,14 @@ CREATE TABLE user_preference (
     topics TEXT[] NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+```
+
+### 4. Supabase Authentication Setup
+```sql
+-- Enable authentication in Supabase Dashboard
+-- Go to Authentication > Settings
+-- Enable email authentication
+-- Configure email templates if needed
 ```
 
 ## Common Issues & Solutions
@@ -139,6 +148,32 @@ processed_content = content.replace('SUBJECT:', '<h2>')
 html_content = f"<div>{processed_content}</div>"
 ```
 
+### Issue 7: Streamlit Text Input Type Errors
+**Problem**: `'email' is not a valid text_input type`
+**Solution**: Use placeholder instead of type parameter:
+```python
+# Wrong
+email = st.text_input("Email", type="email")
+
+# Correct
+email = st.text_input("Email", placeholder="your@email.com")
+```
+
+### Issue 8: Authentication Session Management
+**Problem**: User session not persisting across page reloads
+**Solution**: Initialize auth state and handle session changes:
+```python
+# Initialize authentication
+init_auth()
+handle_auth_state_change()
+
+# Check authentication status
+if is_authenticated():
+    show_main_app()
+else:
+    show_auth_page()
+```
+
 ## Best Practices
 
 ### 1. News Scraping Strategy
@@ -169,7 +204,28 @@ except Exception as e:
     return fallback_value
 ```
 
-### 4. Git Best Practices
+### 4. Authentication Patterns
+```python
+# Authentication utility functions
+def sign_up(email: str, password: str):
+    response = supabase.auth.sign_up({"email": email, "password": password})
+    return {"success": bool(response.user), "user": response.user}
+
+def sign_in(email: str, password: str):
+    response = supabase.auth.sign_in_with_password({"email": email, "password": password})
+    if response.user:
+        st.session_state.authenticated = True
+        st.session_state.user_email = response.user.email
+    return {"success": bool(response.user), "user": response.user}
+
+def protect_route():
+    if not is_authenticated():
+        st.error("Please sign in to access this feature")
+        return False
+    return True
+```
+
+### 5. Git Best Practices
 ```gitignore
 # Python cache files
 __pycache__/
