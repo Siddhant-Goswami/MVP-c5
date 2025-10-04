@@ -1,0 +1,332 @@
+# AI Newsletter MVP - Cursor Rules
+# Tech Stack: Streamlit + Supabase + Groq + Firecrawl + Resend + Python
+
+## Project Structure
+```
+project/
+├── app.py                 # Main Streamlit application
+├── config/
+│   ├── __init__.py       # Make config a Python package
+│   └── sources.py        # News sources configuration
+├── utils/
+│   ├── __init__.py       # Make utils a Python package
+│   ├── database.py       # Supabase database operations
+│   ├── scraper.py        # News scraping (primary method)
+│   ├── ai_curator.py     # Groq LLM newsletter generation
+│   └── email_sender.py   # Resend email functionality
+├── requirements.txt      # Python dependencies
+├── .env.example         # Environment variables template
+├── .gitignore          # Git ignore patterns
+└── .cursorrules        # This file
+```
+
+## Essential Dependencies
+```txt
+streamlit
+streamlit-shadcn-ui
+supabase
+groq
+firecrawl-py
+resend
+python-dotenv
+requests
+beautifulsoup4
+feedparser
+```
+
+## Critical Setup Steps
+
+### 1. Environment Variables (.env)
+```bash
+SUPABASE_URL=your_supabase_url
+SUPABASE_KEY=your_supabase_anon_key
+GROQ_API_KEY=your_groq_api_key
+FIRECRAWL_API_KEY=your_firecrawl_api_key
+RESEND_API_KEY=your_resend_api_key
+```
+
+### 2. Python Package Structure
+- ALWAYS create `__init__.py` files in directories you want to import from
+- Without `__init__.py`, Python won't recognize directories as packages
+- This causes `ModuleNotFoundError` when importing from `utils/` or `config/`
+
+### 3. Supabase Database Setup
+```sql
+-- Create user_preference table
+CREATE TABLE user_preference (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    email TEXT UNIQUE NOT NULL,
+    topics TEXT[] NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+```
+
+## Common Issues & Solutions
+
+### Issue 1: Module Import Errors
+**Problem**: `ModuleNotFoundError: No module named 'utils'`
+**Solution**: 
+- Create `utils/__init__.py` (empty file)
+- Create `config/__init__.py` (empty file)
+- Ensure proper package structure
+
+### Issue 2: Supabase Upsert Errors
+**Problem**: `duplicate key value violates unique constraint`
+**Solution**: Use explicit check-then-update pattern:
+```python
+# Check if record exists first
+existing = supabase.table('table').select('id').eq('email', email).execute()
+if existing.data:
+    # Update existing
+    result = supabase.table('table').update(data).eq('email', email).execute()
+else:
+    # Insert new
+    result = supabase.table('table').insert(data).execute()
+```
+
+### Issue 3: Firecrawl API Changes
+**Problem**: `FirecrawlClient.scrape_url()` or `num_results` parameter errors
+**Solution**: 
+- Use `firecrawl.scrape()` instead of `scrape_url()`
+- Remove unsupported parameters like `num_results`
+- Handle different response formats:
+```python
+def extract_content_from_result(result):
+    if hasattr(result, 'content'):
+        return result.content
+    elif hasattr(result, 'data') and hasattr(result.data, 'content'):
+        return result.data.content
+    elif isinstance(result, dict):
+        return result.get('content', '')
+    return ""
+```
+
+### Issue 4: Email Domain Verification
+**Problem**: `The yourdomain.com domain is not verified`
+**Solution**: Use Resend's test domain:
+```python
+resend.Emails.send({
+    "from": "onboarding@resend.dev",  # Test domain
+    "to": user_email,
+    "subject": subject,
+    "html": html_content
+})
+```
+
+### Issue 5: SSL Certificate Issues
+**Problem**: `SSL: CERTIFICATE_VERIFY_FAILED` with RSS feeds
+**Solution**: Disable SSL verification for development:
+```python
+import ssl
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# Create SSL context that doesn't verify certificates
+ssl_context = ssl.create_default_context()
+ssl_context.check_hostname = False
+ssl_context.verify_mode = ssl.CERT_NONE
+```
+
+### Issue 6: F-string Syntax Errors
+**Problem**: `f-string expression part cannot include a backslash`
+**Solution**: Move string processing outside f-strings:
+```python
+# Wrong
+html_content = f"<div>{content.replace('SUBJECT:', '<h2>')}</div>"
+
+# Correct
+processed_content = content.replace('SUBJECT:', '<h2>')
+html_content = f"<div>{processed_content}</div>"
+```
+
+## Best Practices
+
+### 1. News Scraping Strategy
+Use a multi-tier approach:
+1. **Primary**: API-based scraping (Hacker News, Reddit APIs)
+2. **Secondary**: RSS feeds with SSL handling
+3. **Tertiary**: Firecrawl web scraping
+4. **Fallback**: Hardcoded content (last resort)
+
+### 2. Content Extraction
+Use comprehensive selectors for different news sites:
+```python
+content_selectors = [
+    '.article-body p', '.story-body p', '.article-content p',
+    '.post-content p', '.entry-content p', '.content p',
+    '.story p', '.article p', 'article p', 'main p'
+]
+```
+
+### 3. Error Handling
+Always wrap API calls in try-catch blocks:
+```python
+try:
+    result = api_call()
+    return result
+except Exception as e:
+    print(f"Error: {e}")
+    return fallback_value
+```
+
+### 4. Git Best Practices
+```gitignore
+# Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# Environment files
+.env
+
+# IDE files
+.vscode/
+.idea/
+```
+
+## Configuration Patterns
+
+### News Sources Structure
+```python
+NEWS_SOURCES = {
+    'Category': {
+        'name': 'Display Name',
+        'web_sources': ['url1', 'url2'],      # For Firecrawl
+        'rss_sources': ['rss1', 'rss2'],      # For RSS feeds
+        'api_sources': ['api1', 'api2']       # For API scraping
+    }
+}
+```
+
+### Database Operations
+```python
+def save_preferences(email: str, topics: list):
+    # Always check existence before upsert
+    existing = supabase.table('user_preference').select('id').eq('email', email).execute()
+    
+    if existing.data:
+        return supabase.table('user_preference').update({'topics': topics}).eq('email', email).execute()
+    else:
+        return supabase.table('user_preference').insert({'email': email, 'topics': topics}).execute()
+```
+
+## Testing Commands
+
+### Test Individual Components
+```bash
+# Test scraper
+python -c "from utils.scraper import scrape_sources; print(scrape_sources('AI', 2))"
+
+# Test database
+python -c "from utils.database import save_preferences; print(save_preferences('test@email.com', ['AI']))"
+
+# Test email
+python -c "from utils.email_sender import send_newsletter; print(send_newsletter('test@email.com', 'Test content'))"
+```
+
+### Test Complete Flow
+```bash
+# Test full newsletter generation
+python -c "
+from utils.scraper import scrape_sources
+from utils.ai_curator import curate_newsletter
+articles = scrape_sources('AI', 3)
+newsletter = curate_newsletter(articles, ['AI'])
+print(newsletter)
+"
+```
+
+## Development Workflow
+
+1. **Setup Environment**
+   - Create virtual environment: `python -m venv venv`
+   - Activate: `source venv/bin/activate`
+   - Install dependencies: `pip install -r requirements.txt`
+
+2. **Configure Services**
+   - Set up Supabase project and get credentials
+   - Get API keys for Groq, Firecrawl, Resend
+   - Create `.env` file with all credentials
+
+3. **Test Components**
+   - Test each utility function individually
+   - Test database operations
+   - Test API integrations
+
+4. **Run Application**
+   - Start Streamlit: `streamlit run app.py`
+   - Test end-to-end newsletter generation
+
+## Common Debugging
+
+### Check Import Issues
+```python
+# Test if packages are importable
+try:
+    from utils.scraper import scrape_sources
+    print("✅ Utils import working")
+except ImportError as e:
+    print(f"❌ Import error: {e}")
+```
+
+### Verify Environment Variables
+```python
+import os
+from dotenv import load_dotenv
+load_dotenv()
+
+required_vars = ['SUPABASE_URL', 'SUPABASE_KEY', 'GROQ_API_KEY', 'FIRECRAWL_API_KEY', 'RESEND_API_KEY']
+for var in required_vars:
+    value = os.getenv(var)
+    print(f"{var}: {'✅ Set' if value else '❌ Missing'}")
+```
+
+### Test API Connections
+```python
+# Test Supabase
+from supabase import create_client
+client = create_client(os.getenv('SUPABASE_URL'), os.getenv('SUPABASE_KEY'))
+print("✅ Supabase connected")
+
+# Test Groq
+from groq import Groq
+client = Groq(api_key=os.getenv('GROQ_API_KEY'))
+print("✅ Groq connected")
+```
+
+## Performance Tips
+
+1. **Limit API Calls**: Use `max_articles` parameters to limit requests
+2. **Cache Results**: Store successful scrapes temporarily
+3. **Error Recovery**: Implement fallback mechanisms
+4. **Rate Limiting**: Add delays between API calls if needed
+
+## Security Notes
+
+1. **Never commit `.env` files** to version control
+2. **Use test domains** for email services during development
+3. **Validate user inputs** before database operations
+4. **Handle API keys securely** and rotate them regularly
+
+---
+
+## Quick Start Checklist
+
+- [ ] Create virtual environment and install dependencies
+- [ ] Set up all required services (Supabase, Groq, Firecrawl, Resend)
+- [ ] Create `.env` file with all API keys
+- [ ] Create `__init__.py` files in `utils/` and `config/`
+- [ ] Set up Supabase database table
+- [ ] Test individual components
+- [ ] Test complete newsletter flow
+- [ ] Deploy and test email sending
+
+Remember: This stack is powerful but has many integration points. Test each component individually before testing the full flow!
