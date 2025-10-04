@@ -1,0 +1,10 @@
+streamlit
+streamlit-shadcn-ui
+supabase
+groq
+firecrawl-py
+resend
+python-dotenv
+requests
+beautifulsoup4
+feedparser
