@@ -14,7 +14,7 @@ def save_preferences(email: str, topics: list):
     try:
         # First check if the email exists
         existing = supabase.table('user_preference').select('id').eq('email', email).execute()
-        
+
         if existing.data:
             # Update existing record
             data = supabase.table('user_preference').update({
@@ -26,13 +26,13 @@ def save_preferences(email: str, topics: list):
                 'email': email,
                 'topics': topics
             }).execute()
-        
+
         return True
     except Exception as e:
         print(f"Error: {e}")
         return False
 
-def get_preferences(email: str):
+def get_user_preferences(email: str):
     """Get user preferences by email"""
     try:
         response = supabase.table('user_preference')\
