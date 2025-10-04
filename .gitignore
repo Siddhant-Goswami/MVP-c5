@@ -2,12 +2,15 @@
 venv/
 env/
 ENV/
+.env
 
 # Python cache files
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.py[cod]
+*$py.class
 .Python
 
 # IDE files
