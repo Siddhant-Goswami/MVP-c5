@@ -141,7 +141,14 @@ def scrape_reddit_source(source, headers):
                 selftext = post_data.get('selftext', '')
                 
                 if title and url and score > 10:  # Only posts with some engagement
-                    content = selftext if selftext else f"Reddit discussion about: {title}"
+                    # Try to get real content from the external URL
+                    if selftext and len(selftext) > 100:
+                        content = selftext
+                    else:
+                        # Fetch content from the external article URL
+                        content = get_article_content_safe(url)
+                        if not content or len(content) < 100:
+                            content = f"Recent news: {title}. This article discusses important developments in the field."
                     
                     articles.append({
                         'source': url,
@@ -206,12 +213,21 @@ def get_article_content_safe(url):
         
         soup = BeautifulSoup(response.content, 'html.parser')
         
-        # Try to extract main content
+        # Try to extract main content with comprehensive selectors
         content_selectors = [
-            'article p',
-            '.entry-content p',
+            # News site specific selectors
+            '.article-body p',
+            '.story-body p', 
+            '.article-content p',
             '.post-content p',
+            '.entry-content p',
+            '.content p',
+            '.story p',
+            '.article p',
+            'article p',
             'main p',
+            '.main p',
+            # Generic selectors
             'p'
         ]
         
@@ -219,18 +235,29 @@ def get_article_content_safe(url):
             paragraphs = soup.select(selector)
             if paragraphs:
                 content_parts = []
-                for p in paragraphs[:3]:  # First 3 paragraphs
+                for p in paragraphs[:5]:  # First 5 paragraphs for better context
                     text = p.get_text(strip=True)
-                    if len(text) > 30:
+                    if len(text) > 50:  # Longer minimum for better content
                         content_parts.append(text)
                 
-                if content_parts:
+                if content_parts and len(' '.join(content_parts)) > 200:
                     return ' '.join(content_parts)
         
-        # Fallback: get all text
+        # Try to get content from meta description as fallback
+        meta_desc = soup.find('meta', attrs={'name': 'description'})
+        if meta_desc and meta_desc.get('content'):
+            desc = meta_desc.get('content').strip()
+            if len(desc) > 100:
+                return desc
+        
+        # Final fallback: get all text and clean it
         text = soup.get_text()
         if len(text) > 100:
-            return text[:500]  # First 500 chars
+            # Clean up the text
+            lines = text.split('\n')
+            clean_lines = [line.strip() for line in lines if len(line.strip()) > 50]
+            if clean_lines:
+                return ' '.join(clean_lines[:3])  # First 3 substantial lines
         
     except Exception as e:
         print(f"     ⚠️ Error getting content from {url}: {e}")
